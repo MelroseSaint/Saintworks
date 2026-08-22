@@ -17,6 +17,25 @@ describe('AI engine', () => {
     expect(plan.ops.some((o) => o.type === 'testimonials-section')).toBe(true)
   })
 
+  it('creates a generic page from natural language', () => {
+    const plan = parseAIRequest(project, 'Create a pricing page')
+    const op = plan.ops.find((o) => o.type === 'create-page')
+    expect(op).toBeTruthy()
+    expect(op!.type === 'create-page' && op!.route).toBe('/pricing')
+  })
+
+  it('adds a section from natural language', () => {
+    const plan = parseAIRequest(project, 'Add a contact section')
+    const op = plan.ops.find((o) => o.type === 'add-section')
+    expect(op).toBeTruthy()
+    expect(op!.type === 'add-section' && op!.sectionId).toBe('contact')
+  })
+
+  it('recognizes a polish request', () => {
+    const plan = parseAIRequest(project, 'Make it more professional')
+    expect(plan.ops.some((o) => o.type === 'polish')).toBe(true)
+  })
+
   it('flags off-brand colors as a conflict instead of silently changing the brand', () => {
     const plan = parseAIRequest(project, 'Make everything pink')
     expect(plan.conflicts.length).toBeGreaterThan(0)

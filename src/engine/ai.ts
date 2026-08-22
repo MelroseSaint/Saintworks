@@ -2,9 +2,12 @@ import type { Collection, Node, Project } from '../model/types'
 import { buildNode, pad, uid } from '../model/factories'
 import { flattenNodes } from '../model/tree'
 import { useProjectStore } from '../store/projectStore'
+import { SECTION_TEMPLATES } from '../model/sections'
 
 export type AIOp =
   | { type: 'create-page'; name: string; route: string; heading: string; body: string }
+  | { type: 'add-section'; sectionId: string }
+  | { type: 'polish' }
   | { type: 'cinematic-hero' }
   | { type: 'simplify-mobile-nav' }
   | { type: 'accent-buttons' }
@@ -18,8 +21,36 @@ export interface AIPlan {
   conflicts: string[]
 }
 
-function findComponent(project: Project, name: string) {
-  return Object.values(project.components).find((c) => c.name.toLowerCase() === name.toLowerCase())
+// Map a lowercased section keyword to a section-template id.
+const SECTION_ALIASES: Record<string, string> = {
+  hero: 'hero',
+  about: 'about',
+  service: 'services',
+  services: 'services',
+  feature: 'features',
+  features: 'features',
+  testimonial: 'testimonials',
+  testimonials: 'testimonials',
+  pricing: 'pricing',
+  price: 'pricing',
+  plan: 'pricing',
+  faq: 'faq',
+  questions: 'faq',
+  gallery: 'gallery',
+  portfolio: 'gallery',
+  work: 'gallery',
+  contact: 'contact',
+  newsletter: 'newsletter',
+  cta: 'cta',
+  footer: 'footer',
+}
+
+function titleCase(slug: string): string {
+  return slug
+    .split('-')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
 }
 
 export function parseAIRequest(project: Project, request: string): AIPlan {
@@ -30,7 +61,7 @@ export function parseAIRequest(project: Project, request: string): AIPlan {
 
   const palette = Object.keys(project.tokens.colors)
 
-  // Conflict detection: a color that isn't in the brand palette
+  // Conflict detection: a color that isn't in the brand palette.
   const colorMatch = q.match(/(?:make|use|change).*?\b(red|blue|green|pink|purple|orange|yellow|teal|black|white|gold|silver)\b/)
   if (colorMatch && !palette.some((c) => c.toLowerCase().includes(colorMatch[1]))) {
     conflicts.push(
@@ -38,21 +69,40 @@ export function parseAIRequest(project: Project, request: string): AIPlan {
     )
   }
 
+  // --- Create a page -----------------------------------------------------
+  // "create an About page", "add a pricing page", "make a contact page".
+  const pageMatch = q.match(/(?:create|add|make|build)\s+(?:a\s+|an\s+)?([a-z][a-z-]*)\s+page/)
+  if (pageMatch) {
+    const slug = pageMatch[1].trim()
+    const name = titleCase(slug)
+    const route = '/' + slug
+    summary.push(`Created a ${name} page using existing brand tokens`)
+    ops.push({
+      type: 'create-page',
+      name,
+      route,
+      heading: slug === 'about' ? `About ${project.brand.name}` : name,
+      body: `${project.brand.tagline} ${project.brand.voice.tone}. ${project.brand.imageryRules}`,
+    })
+  }
+
+  // --- Add a section -----------------------------------------------------
+  // "add a pricing section", "create a contact section", "add a call to action".
+  const sectionMatch = q.match(/(?:add|create|insert|new)\s+(?:a\s+|an\s+)?([a-z][a-z-]*)\s+section/)
+  const rawSection = sectionMatch ? SECTION_ALIASES[sectionMatch[1].trim()] : /call\s*to\s*action/.test(q) ? 'cta' : undefined
+  if (rawSection && rawSection !== 'testimonials') {
+    const template = SECTION_TEMPLATES.find((t) => t.id === rawSection)
+    if (template) {
+      summary.push(`Added a ${template.name} section to the homepage`)
+      ops.push({ type: 'add-section', sectionId: template.id })
+    }
+  }
+
+  // --- Specific refinements ---------------------------------------------
   if (/(cinematic|dramatic|premium)/.test(q) && (q.includes('hero') || !q.includes('about'))) {
     summary.push('Added a cinematic reveal animation to the Hero heading and image')
     summary.push('Deepened Hero spacing and added a soft surface background')
     ops.push({ type: 'cinematic-hero' })
-  }
-
-  if (q.includes('about page') || /create .*about/.test(q)) {
-    summary.push('Created an About page using existing brand tokens (heading, body, accent CTA)')
-    ops.push({
-      type: 'create-page',
-      name: 'About',
-      route: '/about',
-      heading: 'About ' + project.brand.name,
-      body: `${project.brand.tagline} ${project.brand.voice.tone}. ${project.brand.imageryRules}`,
-    })
   }
 
   if (/mobile.*(nav|navigation)|(nav|navigation).*simpler/.test(q)) {
@@ -60,7 +110,7 @@ export function parseAIRequest(project: Project, request: string): AIPlan {
     ops.push({ type: 'simplify-mobile-nav' })
   }
 
-  if (/primary buttons? .*accent|accent.*buttons?|buttons?.*accent/.test(q)) {
+  if (/primary buttons? .*accent|accent.*buttons?|buttons?.*accent|make .*buttons? (green|accent)|buttons? (green|accent)/.test(q)) {
     summary.push('Applied the accent color to all primary buttons')
     ops.push({ type: 'accent-buttons' })
   }
@@ -82,9 +132,16 @@ export function parseAIRequest(project: Project, request: string): AIPlan {
     ops.push({ type: 'optimize-load' })
   }
 
+  // --- Polish ------------------------------------------------------------
+  if (/(more professional|professional|polish|clean ?up|improve the design|make it look (better|nicer)|refine|tidy)/.test(q)) {
+    summary.push('Applied consistent section spacing and typography tokens across the site')
+    ops.push({ type: 'polish' })
+  }
+
   if (ops.length === 0 && conflicts.length === 0) {
-    summary.push('I inspected the project but did not recognize a safe structural change.')
-    summary.push('Try: “make the hero cinematic”, “create an About page”, “simplify mobile navigation”, “add a testimonials section”, “fix mobile spacing”.')
+    summary.push('I inspected the project but did not recognize a specific change in that request.')
+    summary.push('I can create pages, add sections, restyle buttons, adjust spacing, and polish the design.')
+    summary.push('Try: “create a pricing page”, “add a contact section”, “make the hero cinematic”, “make the buttons accent”, or “make it more professional”.')
   }
 
   return { summary, ops, conflicts }
@@ -102,6 +159,9 @@ export function applyPlan(project: Project, plan: AIPlan): string[] {
 
   const findComp = (name: string) =>
     Object.values(next.components).find((c) => c.name.toLowerCase() === name.toLowerCase())
+
+  const homePage = () =>
+    Object.values(next.pages).find((p) => p.route === '/') ?? Object.values(next.pages)[0]
 
   for (const op of plan.ops) {
     switch (op.type) {
@@ -136,6 +196,38 @@ export function applyPlan(project: Project, plan: AIPlan): string[] {
         }
         next.pageOrder = [...next.pageOrder, id]
         results.push(`Created page “${op.name}”`)
+        break
+      }
+
+      case 'add-section': {
+        const template = SECTION_TEMPLATES.find((t) => t.id === op.sectionId)
+        if (!template) {
+          results.push('Could not find that section template')
+          break
+        }
+        const page = homePage()
+        if (!page) {
+          results.push('No page found to add the section to')
+          break
+        }
+        page.nodes.push(template.build())
+        results.push(`Added a ${template.name} section to “${page.name}”`)
+        break
+      }
+
+      case 'polish': {
+        let sections = 0
+        const tidy = (n: Node) => {
+          if (n.type === 'section') {
+            n.style.spacing.padding = { top: 'XL', bottom: 'XL', left: 'LG', right: 'LG' }
+            sections++
+          }
+          if (n.type === 'heading' && !n.style.typography.fontToken) n.style.typography.fontToken = 'heading'
+          if (n.type === 'text' && !n.style.typography.fontToken) n.style.typography.fontToken = 'body'
+        }
+        for (const page of Object.values(next.pages)) for (const n of flattenNodes(page.nodes)) tidy(n)
+        for (const comp of Object.values(next.components)) for (const n of flattenNodes([comp.rootNode])) tidy(n)
+        results.push(`Polished ${sections} section${sections === 1 ? '' : 's'} — consistent spacing and typography`)
         break
       }
 
@@ -179,7 +271,7 @@ export function applyPlan(project: Project, plan: AIPlan): string[] {
         let count = 0
         const setAccent = (nodes: Node[]) => {
           for (const n of flattenNodes(nodes)) {
-            if (n.type === 'button' && (n.style.background.colorToken === 'primary' || n.style.typography.colorToken === 'primary')) {
+            if (n.type === 'button' && (n.style.background.colorToken === 'primary' || n.style.typography.colorToken === 'primary' || n.style.background.colorToken === 'accent' || n.style.typography.colorToken === 'accent')) {
               n.style.background.colorToken = 'accent'
               n.style.typography.colorToken = 'text.inverse'
               count++
@@ -233,14 +325,14 @@ export function applyPlan(project: Project, plan: AIPlan): string[] {
             }),
           ],
         })
-        const home = Object.values(next.pages).find((p) => p.route === '/') ?? Object.values(next.pages)[0]
+        const home = homePage()
         if (home) home.nodes.push(section)
         results.push('Added a testimonials section bound to the collection')
         break
       }
 
       case 'fix-mobile-spacing': {
-        const home = Object.values(next.pages).find((p) => p.route === '/') ?? Object.values(next.pages)[0]
+        const home = homePage()
         if (!home) break
         let count = 0
         for (const n of home.nodes) {
