@@ -1,5 +1,8 @@
 # SaintWorks
 
+[![CI](https://github.com/MelroseSaint/Saintworks/actions/workflows/ci.yml/badge.svg)](https://github.com/MelroseSaint/Saintworks/actions/workflows/ci.yml)
+[![Deploy](https://github.com/MelroseSaint/Saintworks/actions/workflows/deploy.yml/badge.svg)](https://github.com/MelroseSaint/Saintworks/actions/workflows/deploy.yml)
+
 **A professional no-code website builder, brand development platform, and visual web IDE.**
 
 SaintWorks is a place where people come to do actual work. It combines a brand builder, a website builder, and a visual development environment into one connected workspace — so the brand, the design system, the components, and the published site all stay in sync without writing code by hand.
